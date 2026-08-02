@@ -425,7 +425,7 @@ const clock = new THREE.Clock(); // three.js delta-time helper
 const blackHoleTarget = new THREE.Vector3(0, 0, 0); // world origin, what the
                                                     //  camera looks at when controls are disabled
 
-// MAIN RENDER / ANIMATION LOOP — runs once per frame
+// MAIN RENDER / ANIMATION LOOP - runs once per frame
 
 function animate() {
     // Delta time since last frame, capped at 0.1s so a dropped/backgrounded tab
@@ -467,7 +467,7 @@ function animate() {
     let currentChapter = "Observation"; // used later for the return-to-start
                                         // check and debug overlay text
 
-    // CHAPTER 1: OBSERVATION — user can freely orbit once truly "home";
+    // CHAPTER 1: OBSERVATION - user can freely orbit once truly "home";
     // otherwise the camera is mid-flight back to INITIAL_CAM_POS
     if (p <= CHAPTERS.observation[1]) {
         currentChapter = "Observation";
@@ -491,16 +491,8 @@ function animate() {
         diskMaterial.uniforms.uHeat.value = 1.0;
         auraMat.uniforms.uIntensity.value = 1.0;
 
-        // Update on-screen UI text/colors for this chapter
-        if (mainTitleEl) mainTitleEl.innerText = "OBSERVATION";
-        if (statusTextEl) {
-            statusTextEl.innerText = "TOPOLOGY: NOMINAL";
-            statusTextEl.style.color = "#ffffff";
-            statusTextEl.style.borderColor = "rgba(255, 255, 255, 0.15)";
-        }
-        if (velValEl) velValEl.innerText = "0.45c";
 
-    // CHAPTER 2: INSTABILITY — camera locked, flies from user's orbit
+    // CHAPTER 2: INSTABILITY - camera locked, flies from user's orbit
     // position up to an overhead view; disk starts turbulating
     } else if (p <= CHAPTERS.instability[1]) {
         currentChapter = "Instability";
@@ -523,15 +515,8 @@ function animate() {
         diskMaterial.uniforms.uHeat.value = remap(instLerp, 0, 1, 1.0, 2.0);         // heats up in color
         auraMat.uniforms.uIntensity.value = remap(instLerp, 0, 1, 1.0, 1.4);         // core rim glow brightens too
 
-        if (mainTitleEl) mainTitleEl.innerText = "ACCRETION TURBULENCE";
-        if (statusTextEl) {
-            statusTextEl.innerText = "TOPOLOGY: FLUCTUATING";
-            statusTextEl.style.color = "#ffaa00";
-            statusTextEl.style.borderColor = "#ffaa00";
-        }
-        if (velValEl) velValEl.innerText = "0.78c";
 
-    // CHAPTER 3: SINGULARITY — camera dives from overhead down close to
+    // CHAPTER 3: SINGULARITY - camera dives from overhead down close to
     // the core; disk collapses inward and goes white-hot
     } else {
         currentChapter = "Singularity";
@@ -548,17 +533,10 @@ function animate() {
         diskMaterial.uniforms.uOrbitScale.value = remap(diveLerp, 0, 1, 1.8, 5.0);   // spins extremely fast
         diskMaterial.uniforms.uHeat.value = remap(diveLerp, 0, 1, 2.0, 5.0);         // pushed fully toward white-hot
         auraMat.uniforms.uIntensity.value = remap(diveLerp, 0, 1, 1.4, 8.0);         // core rim glow becomes blinding
-
-        if (mainTitleEl) mainTitleEl.innerText = "RELATIVISTIC COLLAPSE";
-        if (statusTextEl) {
-            statusTextEl.innerText = "TOPOLOGY: CRITICAL";
-            statusTextEl.style.color = "#ff0044";
-            statusTextEl.style.borderColor = "#ff0044";
-        }
-        if (velValEl) velValEl.innerText = "0.99c";
     }
 
-    // ---- Apply camera movement for this frame ----
+
+    // - Apply camera movement for this frame -
     if (controls.enabled) {
         // Observation chapter, fully at home: let OrbitControls handle damping/rotation from user input
         controls.update();
@@ -579,9 +557,11 @@ function animate() {
             // that depends on "where the camera is" so orbiting resumes cleanly
             camera.position.copy(INITIAL_CAM_POS);
             baseUserCamPos.copy(INITIAL_CAM_POS);
-            controls.target.set(0, 0, 0); // make sure OrbitControls orbits around the black hole, not a stale target
+            controls.target.set(0, 0, 0); // make sure OrbitControls orbits around 
+                                          // the black hole, not a stale target
             controls.update();
-            arrivedAtStart = true; // orbit control re-enabled on the next frame's Observation branch
+            arrivedAtStart = true; // orbit control re-enabled on the next frame's 
+                                   // Observation branch
         }
     }
 
@@ -591,7 +571,7 @@ function animate() {
         whiteoutEl.style.opacity = whiteoutOpacity.toFixed(3);
     }
 
-    // ---- Debug overlay: only shown when DEBUG_SCROLL is true ----
+    // - Debug overlay: only shown when DEBUG_SCROLL is true -
     if (DEBUG_SCROLL && debugOverlayEl) {
         debugOverlayEl.style.display = 'block';
         debugOverlayEl.innerText =

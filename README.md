@@ -75,9 +75,6 @@ Each of the 15,000 disk particles is a tapered cone (`CylinderGeometry`, top rad
 | `#whiteout` | Full-screen overlay that fades to white during the Singularity finale |
 | `#scroll-prompt` | "Scroll to explore" prompt, fades out as the user starts scrolling |
 | `#debug-overlay` | Debug text panel (only shown if `DEBUG_SCROLL = true`) |
-| `#main-title` | Chapter title text |
-| `#status-text` | Chapter status/topology label |
-| `#vel-val` | Displayed velocity readout (e.g. "0.45c") |
 
 ---
 
