@@ -84,8 +84,9 @@ controls.touches = {
 // finger can still scroll the story while two-finger drags orbit the disk.
 renderer.domElement.style.touchAction = 'pan-y';
 
-// DYNAMIC TOUCH-ACTION — two-finger rotate vs one-finger scroll
+// DYNAMIC TOUCH-ACTION - two-finger rotate vs one-finger scroll
 // The browser decides from the *static* touch-action value whether IT wins
+// reason: IDK anymore im tired I want to sleep and finish this hell hole.
 // over our pointer events when a gesture starts. `pan-y` keeps one-finger
 // scrolling alive, but with it set, the browser also claims multi-touch
 // sequences (page scroll/zoom) and fires pointercancel, chopping off the
@@ -93,88 +94,26 @@ renderer.domElement.style.touchAction = 'pan-y';
 // flip the canvas to `none` so ALL gesture authority goes to OrbitControls;
 // the moment it drops back to one finger, restore `pan-y` so single-finger
 // page scrolling resumes.
+const canvasEl = renderer.domElement;
 
-function syncTouchAction(e, activeTouches) {
-    // Defensive: touchend/touchcancel can fire with an empty (or, in some
-    // browser edge cases, missing) touches list — treat that as "no fingers",
-    // which always means restore scrolling.
-    const count = activeTouches ?? (e.touches ? e.touches.length : 0);
-    // Always target the CURRENT canvas, never a stale captured reference.
-    renderer.domElement.style.touchAction = count >= 2 ? 'none' : 'pan-y';
+function syncTouchAction(e) {
+    canvasEl.style.touchAction = e.touches.length >= 2 ? 'none' : 'pan-y';
 }
 
-// Shared wrapper for the count-changing touch events (touchstart/touchend/
-// touchcancel): computes the guarded active-touch count once and always hands
-// syncTouchAction the same (e, activeTouches) shape, so the touch-action
-// switch behaves identically whether a finger lands, lifts, or the browser
-// aborts the sequence.
-function onCanvasTouchState(e) {
-    syncTouchAction(e, e.touches ? e.touches.length : 0);
-}
-
+// Re-sync as fingers land/leave. These are safe to keep passive — we only
+// mutate a style here, never preventDefault.
+canvasEl.addEventListener('touchstart', syncTouchAction, { passive: true });
+canvasEl.addEventListener('touchend', syncTouchAction, { passive: true });
+canvasEl.addEventListener('touchcancel', syncTouchAction, { passive: true });
 // touchmove must be non-passive so we can preventDefault on multi-touch. iOS
 // Safari ignores `touch-action: none` for certain gesture sequences, so this
 // preventDefault is the belt-and-suspenders that actually stops the browser
 // from stealing the two-finger rotation. Single-finger moves are left alone
 // so vertical page scrolling keeps working.
-function onCanvasTouchMove(e) {
-    const activeTouches = e.touches ? e.touches.length : 0;
-    if (activeTouches >= 2) e.preventDefault();
-    syncTouchAction(e, activeTouches);
-}
-
-// Bind/teardown helpers with a double-init guard. Named handler references
-// (not anonymous closures) mean removeEventListener can actually unbind them,
-// and the binding tracks WHICH canvas owns the listeners: if a remount ever
-// replaces renderer.domElement, the old canvas's listeners are torn down
-// before the new canvas is bound, so stale elements never keep handlers and
-// the guard never blocks a fresh bind.
-let touchActionBound = false;
-let touchActionCanvas = null;
-
-function bindTouchActionListeners() {
-    const canvas = renderer.domElement;
-    if (touchActionBound && touchActionCanvas === canvas) return; // already bound
-    if (touchActionBound) disposeTouchActionListeners(); // canvas replaced -> unbind the old one first
-    touchActionCanvas = canvas;
-    // Re-sync as fingers land/leave. These are safe to keep passive — we only
-    // mutate a style here, never preventDefault.
-    canvas.addEventListener('touchstart', onCanvasTouchState, { passive: true });
-    canvas.addEventListener('touchend', onCanvasTouchState, { passive: true });
-    canvas.addEventListener('touchcancel', onCanvasTouchState, { passive: true });
-    canvas.addEventListener('touchmove', onCanvasTouchMove, { passive: false });
-    touchActionBound = true;
-}
-
-// Exported teardown API: host apps / componentized setups can call this on
-// unmount. Also wired into pagehide below so unload/bfcache transitions never
-// leave listeners attached.
-export function disposeTouchActionListeners() {
-    if (!touchActionBound) return;
-    // Hardened: if the tracked canvas was cleared/replaced before teardown
-    // (unexpected remount ordering), there is nothing to unbind — just reset
-    // the state so a later bind starts clean instead of dereferencing null.
-    if (!touchActionCanvas) {
-        touchActionBound = false;
-        return;
-    }
-    touchActionCanvas.removeEventListener('touchstart', onCanvasTouchState);
-    touchActionCanvas.removeEventListener('touchend', onCanvasTouchState);
-    touchActionCanvas.removeEventListener('touchcancel', onCanvasTouchState);
-    touchActionCanvas.removeEventListener('touchmove', onCanvasTouchMove);
-    touchActionCanvas = null;
-    touchActionBound = false;
-}
-
-// Teardown wiring: dispose on pagehide (fires on real unload AND when the
-// page goes into bfcache). bfcache restores need a rebind — pageshow with
-// event.persisted === true is exactly the "restored from cache" signal.
-window.addEventListener('pagehide', disposeTouchActionListeners);
-window.addEventListener('pageshow', (event) => {
-    if (event.persisted) bindTouchActionListeners();
-});
-
-bindTouchActionListeners();
+canvasEl.addEventListener('touchmove', (e) => {
+    if (e.touches.length >= 2) e.preventDefault();
+    syncTouchAction(e);
+}, { passive: false });
 
 // Tracks the camera position the user last left it at via manual orbiting.
 // Kept separate from the scroll-driven lerp target so scroll animation
@@ -530,9 +469,7 @@ window.addEventListener('scroll', () => {
     let progress = maxScroll > 0 ? scrollY / maxScroll : 0;
 
     // Snap to exactly 1.0 near the bottom regardless of browser-chrome quirks.
-    // Uses the same layout-viewport metric (clientHeight) as maxScroll so the
-    // snap check and the denominator share one stable viewport basis.
-    if (maxScroll > 0 && scrollY + docEl.clientHeight >= docEl.scrollHeight - 10) {
+    if (maxScroll > 0 && scrollY + window.innerHeight >= docEl.scrollHeight - 10) {
         progress = 1;
     }
 
