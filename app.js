@@ -126,6 +126,7 @@ let baseUserCamPos = INITIAL_CAM_POS.clone();
 // using this code found in opensource talking about this same issue
 // "the last place the user parked the camera"
 // TOOK 8HRS OF MY LIFE FOR BETTER LIFE QUALITY CHANGE DAMMIT
+// Test
 controls.addEventListener('change', () => {
     if (controls.enabled) {
         baseUserCamPos.copy(camera.position);
