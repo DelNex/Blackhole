@@ -84,6 +84,36 @@ controls.touches = {
 // finger can still scroll the story while two-finger drags orbit the disk.
 renderer.domElement.style.touchAction = 'pan-y';
 
+// DYNAMIC TOUCH-ACTION — two-finger rotate vs one-finger scroll
+// The browser decides from the *static* touch-action value whether IT wins
+// over our pointer events when a gesture starts. `pan-y` keeps one-finger
+// scrolling alive, but with it set, the browser also claims multi-touch
+// sequences (page scroll/zoom) and fires pointercancel, chopping off the
+// two-finger rotation mid-gesture. Fix: the moment a second finger lands,
+// flip the canvas to `none` so ALL gesture authority goes to OrbitControls;
+// the moment it drops back to one finger, restore `pan-y` so single-finger
+// page scrolling resumes.
+const canvasEl = renderer.domElement;
+
+function syncTouchAction(e) {
+    canvasEl.style.touchAction = e.touches.length >= 2 ? 'none' : 'pan-y';
+}
+
+// Re-sync as fingers land/leave. These are safe to keep passive — we only
+// mutate a style here, never preventDefault.
+canvasEl.addEventListener('touchstart', syncTouchAction, { passive: true });
+canvasEl.addEventListener('touchend', syncTouchAction, { passive: true });
+canvasEl.addEventListener('touchcancel', syncTouchAction, { passive: true });
+// touchmove must be non-passive so we can preventDefault on multi-touch. iOS
+// Safari ignores `touch-action: none` for certain gesture sequences, so this
+// preventDefault is the belt-and-suspenders that actually stops the browser
+// from stealing the two-finger rotation. Single-finger moves are left alone
+// so vertical page scrolling keeps working.
+canvasEl.addEventListener('touchmove', (e) => {
+    if (e.touches.length >= 2) e.preventDefault();
+    syncTouchAction(e);
+}, { passive: false });
+
 // Tracks the camera position the user last left it at via manual orbiting.
 // Kept separate from the scroll-driven lerp target so scroll animation
 // doesn't fight with (or get overwritten by) user drag input.
@@ -423,12 +453,26 @@ if (isMobile) {
     scrollPromptEl.textContent = 'Scroll to explore';
 }
 
-// Convert raw page scroll position into a 0–1 progress value
+// Convert raw page scroll position into a 0–1 progress value.
+// Use documentElement.clientHeight (the *layout* viewport) as the denominator,
+// NOT window.innerHeight: innerHeight is the visual viewport and resizes as
+// the mobile address bar retracts, making scrollY / maxScroll unstable and
+// unable to reach exactly 1.0. clientHeight stays pinned during toolbar
+// collapse, so the math lands on 1.0 at the true bottom. A small tolerance
+// buffer then force-clamps to 1.0 on the last ~10px so the whiteout finale
+// always triggers.
 window.addEventListener('scroll', () => {
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    if (maxScroll > 0) {
-        targetScrollProgress = Math.min(Math.max(window.scrollY / maxScroll, 0), 1);
+    const docEl = document.documentElement;
+    const scrollY = window.scrollY;
+    const maxScroll = docEl.scrollHeight - docEl.clientHeight; // layout-viewport based
+    let progress = maxScroll > 0 ? scrollY / maxScroll : 0;
+
+    // Snap to exactly 1.0 near the bottom regardless of browser-chrome quirks.
+    if (maxScroll > 0 && scrollY + window.innerHeight >= docEl.scrollHeight - 10) {
+        progress = 1;
     }
+
+    targetScrollProgress = Math.min(Math.max(progress, 0), 1);
 });
 
 // Clamp a value between min and max (defaults to 0–1)
