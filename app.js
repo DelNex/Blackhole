@@ -96,23 +96,50 @@ renderer.domElement.style.touchAction = 'pan-y';
 const canvasEl = renderer.domElement;
 
 function syncTouchAction(e) {
-    canvasEl.style.touchAction = e.touches.length >= 2 ? 'none' : 'pan-y';
+    // Defensive: touchend/touchcancel can fire with an empty (or, in some
+    // browser edge cases, missing) touches list — treat that as "no fingers",
+    // which always means restore scrolling.
+    const activeTouches = e.touches ? e.touches.length : 0;
+    canvasEl.style.touchAction = activeTouches >= 2 ? 'none' : 'pan-y';
 }
 
-// Re-sync as fingers land/leave. These are safe to keep passive — we only
-// mutate a style here, never preventDefault.
-canvasEl.addEventListener('touchstart', syncTouchAction, { passive: true });
-canvasEl.addEventListener('touchend', syncTouchAction, { passive: true });
-canvasEl.addEventListener('touchcancel', syncTouchAction, { passive: true });
 // touchmove must be non-passive so we can preventDefault on multi-touch. iOS
 // Safari ignores `touch-action: none` for certain gesture sequences, so this
 // preventDefault is the belt-and-suspenders that actually stops the browser
 // from stealing the two-finger rotation. Single-finger moves are left alone
 // so vertical page scrolling keeps working.
-canvasEl.addEventListener('touchmove', (e) => {
+function onCanvasTouchMove(e) {
     if (e.touches.length >= 2) e.preventDefault();
     syncTouchAction(e);
-}, { passive: false });
+}
+
+// Bind/teardown helpers with a double-init guard. Named handler references
+// (not anonymous closures) mean removeEventListener can actually unbind them,
+// and the flag makes re-binding a no-op — so SPA re-mounts or a re-executed
+// module can never stack duplicate listeners on the canvas.
+let touchActionBound = false;
+
+function bindTouchActionListeners() {
+    if (touchActionBound) return;
+    // Re-sync as fingers land/leave. These are safe to keep passive — we only
+    // mutate a style here, never preventDefault.
+    canvasEl.addEventListener('touchstart', syncTouchAction, { passive: true });
+    canvasEl.addEventListener('touchend', syncTouchAction, { passive: true });
+    canvasEl.addEventListener('touchcancel', syncTouchAction, { passive: true });
+    canvasEl.addEventListener('touchmove', onCanvasTouchMove, { passive: false });
+    touchActionBound = true;
+}
+
+function disposeTouchActionListeners() {
+    if (!touchActionBound) return;
+    canvasEl.removeEventListener('touchstart', syncTouchAction);
+    canvasEl.removeEventListener('touchend', syncTouchAction);
+    canvasEl.removeEventListener('touchcancel', syncTouchAction);
+    canvasEl.removeEventListener('touchmove', onCanvasTouchMove);
+    touchActionBound = false;
+}
+
+bindTouchActionListeners();
 
 // Tracks the camera position the user last left it at via manual orbiting.
 // Kept separate from the scroll-driven lerp target so scroll animation
@@ -468,7 +495,9 @@ window.addEventListener('scroll', () => {
     let progress = maxScroll > 0 ? scrollY / maxScroll : 0;
 
     // Snap to exactly 1.0 near the bottom regardless of browser-chrome quirks.
-    if (maxScroll > 0 && scrollY + window.innerHeight >= docEl.scrollHeight - 10) {
+    // Uses the same layout-viewport metric (clientHeight) as maxScroll so the
+    // snap check and the denominator share one stable viewport basis.
+    if (maxScroll > 0 && scrollY + docEl.clientHeight >= docEl.scrollHeight - 10) {
         progress = 1;
     }
 
