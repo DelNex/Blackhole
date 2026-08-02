@@ -80,56 +80,44 @@ controls.touches = {
 };
 
 // Force pointer events to be delivered on mobile so OrbitControls can
-// receive two-finger gestures. The canvas covers the page, so one-finger
-// vertical scroll is handled manually instead of relying on browser touch-action.
+// receive two-finger gestures, while still letting the browser handle
+// single-finger page scroll naturally.
 const canvasEl = renderer.domElement;
-canvasEl.style.touchAction = 'none';
+canvasEl.style.touchAction = 'pan-y';
 const touchListenerOptions = { passive: false, capture: false };
 const activeTouchIds = new Set();
-let lastSingleTouchY = null;
+
+function syncCanvasTouchAction(activeTouchCount) {
+    canvasEl.style.touchAction = activeTouchCount >= 2 ? 'none' : 'pan-y';
+}
 
 function onCanvasTouchStart(e) {
-    // Track every touch pointer that starts on the canvas, because touchend/
-    // touchcancel events can be delivered with fewer touches than were actually
-    // active before the event.
+    // Track every touch pointer that starts on the canvas. We use our own
+    // active-touch counter instead of relying only on e.touches.length so the
+    // gesture state stays correct during end/cancel events.
     for (let i = 0; i < e.changedTouches.length; i++) {
         activeTouchIds.add(e.changedTouches[i].identifier);
     }
 
-    if (activeTouchIds.size === 1 && e.touches.length === 1) {
-        lastSingleTouchY = e.touches[0].clientY;
-    } else {
-        lastSingleTouchY = null;
-    }
+    syncCanvasTouchAction(activeTouchIds.size);
 }
 
 function onCanvasTouchMove(e) {
-    // One-finger vertical drags should scroll the page, while two-finger
-    // gestures should be captured and forwarded to OrbitControls.
-    if (activeTouchIds.size === 1 && e.touches.length === 1 && lastSingleTouchY !== null) {
-        const currentY = e.touches[0].clientY;
-        window.scrollBy(0, lastSingleTouchY - currentY);
-        lastSingleTouchY = currentY;
-        e.preventDefault();
-    } else if (activeTouchIds.size >= 2) {
-        lastSingleTouchY = null;
+    // One-finger drags should let the browser scroll the page. Two-finger
+    // gestures should be captured so OrbitControls can rotate the model.
+    if (activeTouchIds.size >= 2) {
         e.preventDefault();
     }
 }
 
 function onCanvasTouchEnd(e) {
-    // Remove ended touch pointers from our active set, then recompute whether
-    // the remaining gesture is a single-finger scroll or part of a multi-touch
-    // OrbitControls interaction.
+    // Remove ended touch pointers from our active set and keep the canvas in
+    // the correct scroll-vs-rotate mode for whatever remains active.
     for (let i = 0; i < e.changedTouches.length; i++) {
         activeTouchIds.delete(e.changedTouches[i].identifier);
     }
 
-    if (activeTouchIds.size === 1 && e.touches.length === 1) {
-        lastSingleTouchY = e.touches[0].clientY;
-    } else {
-        lastSingleTouchY = null;
-    }
+    syncCanvasTouchAction(activeTouchIds.size);
 }
 
 function onCanvasTouchCancel(e) {
@@ -138,7 +126,8 @@ function onCanvasTouchCancel(e) {
     for (let i = 0; i < e.changedTouches.length; i++) {
         activeTouchIds.delete(e.changedTouches[i].identifier);
     }
-    lastSingleTouchY = null;
+
+    syncCanvasTouchAction(activeTouchIds.size);
 }
 
 canvasEl.addEventListener('touchstart', onCanvasTouchStart, touchListenerOptions);
