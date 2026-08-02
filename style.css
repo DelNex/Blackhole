@@ -1,18 +1,35 @@
-body {
+html, body {
     margin: 0;
     height: 400vh;
     background-color: #010103;
     font-family: 'Inter', -apple-system, sans-serif;
     color: #fff;
+
+    touch-action: pan-y; /*Adding: for one and two finger support on mobile */
+
+    /* Mobile niceties: no blue tap-highlight flash, no accidental long-press
+       callout, no OS text-selection while dragging the scene, and relaxed
+       overscroll so rubber-banding doesn't yank the page around. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior-y: none;
 }
 canvas {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
+    /* Progressive viewport units: 100vh is fine everywhere, but on phones with
+       collapsing address bars 100dvh tracks exactly what the screen shows, so
+       the canvas never gets covered/offset as the browser chrome shows/hides. */
     height: 100vh;
+    height: 100dvh;
     display: block;
     z-index: 1;
+
+    touch-action: pan-y;
 }
 #vignette {
     position: fixed;
@@ -31,7 +48,9 @@ canvas {
 }
 #overlay {
     position: fixed;
-    top: 40px;
+    /* Safe-area aware: clears the iPhone/Android status bar / notch area so
+       the prompt never sits under hardware chrome. */
+    top: max(40px, calc(20px + env(safe-area-inset-top, 0px)));
     left: 0;
     width: 100vw;
     pointer-events: none;
@@ -39,14 +58,19 @@ canvas {
     justify-content: center;
     align-items: center;
     z-index: 10;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
 }
 #scroll-prompt {
-    font-size: 1rem;
-    letter-spacing: 0.5em;
+    /* Fluid type + tracking so the prompt scales gracefully from tiny phones
+       to big desktop monitors instead of being one fixed size forever. */
+    font-size: clamp(0.72rem, 2.4vw, 1rem);
+    letter-spacing: clamp(0.3em, 5.2vw, 0.5em);
     text-transform: uppercase;
     color: rgba(255, 255, 255, 0.85);
     font-weight: 300;
     text-align: center;
+    max-width: 90vw; /* don't let the tracking make it overflow on narrow screens */
     transition: opacity 0.3s ease;
     animation: pulse 2.5s infinite ease-in-out;
 }
@@ -56,8 +80,9 @@ canvas {
 }
 #debug-overlay {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
+    /* Safe-area aware so it never sits under the iPad/iPhone home indicator. */
+    bottom: max(20px, calc(16px + env(safe-area-inset-bottom, 0px)));
+    right: max(20px, calc(16px + env(safe-area-inset-right, 0px)));
     background: rgba(0, 0, 0, 0.85);
     border: 1px solid rgba(0, 243, 255, 0.4);
     padding: 14px 18px;
@@ -73,4 +98,48 @@ canvas {
     display: none;
 }
 
+/* =========================================================
+   RESPONSIVE WEB DESIGN — phone → tablet → desktop breakpoints
+   ========================================================= */
 
+/* MD breakpoint (tablets like iPad in portrait, phones in landscape).
+   Slightly tighten the UI so nothing looks stretched on mid-size screens. */
+@media (max-width: 1024px) {
+    #overlay {
+        top: max(28px, calc(16px + env(safe-area-inset-top, 0px)));
+    }
+}
+
+/* SM breakpoint: phones ≤ ~430px (iPhone 12/13/14 Pro, Pixel, Galaxy). */
+@media (max-width: 480px) {
+    #scroll-prompt {
+        font-size: 0.78rem;
+        letter-spacing: 0.28em;
+        max-width: 84vw;
+    }
+    #debug-overlay {
+        /* Debug panel gets tight on a small phone → shrink it and tuck it
+           into the corner without covering the whole scene. */
+        font-size: 0.62rem;
+        padding: 10px 12px;
+        right: 12px;
+        bottom: max(12px, calc(12px + env(safe-area-inset-bottom, 0px)));
+    }
+}
+
+/* Video-game-landscape-ish / short screens: prompt center-top the screen,
+   scale way down so it stays visible with little vertical room. */
+@media (max-height: 500px) {
+    #scroll-prompt {
+        font-size: 0.7rem;
+        letter-spacing: 0.24em;
+    }
+}
+
+/* Respect users who asked the OS to reduce motion: kill the pulsing hint so
+   it can't trigger motion sickness. The rest of the experience stays intact. */
+@media (prefers-reduced-motion: reduce) {
+    #scroll-prompt {
+        animation: none;
+    }
+}

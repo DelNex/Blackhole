@@ -1,18 +1,24 @@
 // For those reading this dont mind my comments I left them out for me to debug and
-// remember the staging and the issues, you might read them some are pure nonsense btw 
-// used gemini to redo my comments cuz you guys probably wont be able to understand some 
+// remember the staging and the issues, you might read them some are pure nonsense btw
+// used gemini to redo my comments cuz you guys probably wont be able to understand some
 // of it and thats it hope you gets some of the use on this three.js
 
-
-// (Changes) Removed the feathering and Waving feature I added causing tons of bugs 
-// (Future Implementation) Add back the feathering so it looks like it gets swallowed 
-//  Will cause pain but what can we do. so goal rn get good at three.js to find the issue 
+// (Changes) Removed the feathering and Waving feature I added causing tons of bugs
+// (Future Implementation) Add back the feathering so it looks like it gets swallowed
+//  Will cause pain but what can we do. so goal rn get good at three.js to find the issue
 //  intial speculation of the bug is the angular (atan/orbit) math wasnt working and needed to change formula
 //  and hardening by adding a caching which remember the initial positioning of the
 //  particles and then use the helper to make them align back if cause it some issues
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// DEVICE DETECTION
+// Is mobile? Used below to pick phone-friendly performance settings.
+// Combines a coarse-pointer media query (detects touch-primary hardware like
+// phones/tablets without fragility) with a UA-string fallback so laptops with
+// touchscreens and any weird UA also get the safe lower-quality phone cap.
+const isMobile = window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 // CAMERA SETUP
 // Comment: Dont try this again dumb ahhh hardcoding positions makes them worst
@@ -34,19 +40,19 @@ camera.position.copy(INITIAL_CAM_POS);
 // discrete/high-performance GPU if one is available example (laptops with 2 GPUs)
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
-// Cap pixel ratio at 2 so 3x/4x retina displays
-// this make it so that it doesn`t tank performance 
-// This differs between devices so I hope I get extra time to make it compatible
-// for mobiles I think it will cause lag as of right now (have not tested yet)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Cap pixel ratio so 3x/4x retina displays don't tank performance.
+// Mobile GPUs struggle with the heavy per-vertex simplex noise at native
+// density, so mobiles cap lower (1.5) than desktop (2). Keeps the disk crisp
+// while drastically cutting fragment cost on phones.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
 // Filmic tone mapping gives a more cinematic HDR-style look to the glow/bloom
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.6; // brightens overall exposure under that tone mapping
 document.body.appendChild(renderer.domElement); // mount the <canvas> into the page
 
 // ORBIT CONTROLS (only active in "Observation")
-// Plan: this will be a user-driven camera rotation so the goal is to set up 
-// a rotation control config and then connect to the future event stages 
+// Plan: this will be a user-driven camera rotation so the goal is to set up
+// a rotation control config and then connect to the future event stages
 // This was done along time ago I just forgot to remove this because why not.
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;      // adds inertia/smoothing to drag input
@@ -56,13 +62,35 @@ controls.autoRotateSpeed = 0.0;     // common sense gng "ROTATIONSPEED!!!"
 controls.enableZoom = false;        // scroll wheel is reserved for the scroll-driven story, not zoom
 controls.enablePan = false;         // prevent panning off-target
 
+// Desktop: left-drag is the only orbit gesture. Middle/right buttons are
+// disabled entirely so the site's scroll/reserved gestures stay untouched.
+controls.mouseButtons = {
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.NONE,
+    RIGHT: THREE.MOUSE.NONE
+};
+
+// Mobile: single-finger swipe is ignored (passes through to native page
+// scroll so the chapter story still scrolls on a phone); two-finger drag
+// handles the 3D rotation instead.
+controls.touches = {
+    ONE: THREE.TOUCH.NONE,
+    TWO: THREE.TOUCH.ROTATE
+};
+
+// OrbitControls forces touch-action:none onto the canvas as an inline style
+// (which beats the CSS rule in style.css), and that would block all
+// one-finger scrolling on mobile. Reinstate vertical panning so a single
+// finger can still scroll the story while two-finger drags orbit the disk.
+renderer.domElement.style.touchAction = 'pan-y';
+
 // Tracks the camera position the user last left it at via manual orbiting.
 // Kept separate from the scroll-driven lerp target so scroll animation
 // doesn't fight with (or get overwritten by) user drag input.
 let baseUserCamPos = INITIAL_CAM_POS.clone();
 
 // Whenever OrbitControls changes the camera (i.e. the user is dragging),
-// resync baseUserCamPos 
+// resync baseUserCamPos
 // While debugging I noticed a bug that I cause which i found a solution by
 // using this code found in opensource talking about this same issue
 // "the last place the user parked the camera"
@@ -129,7 +157,7 @@ const noiseChunk = `
     }
 `;
 
-// BLACK HOLE CORE 
+// BLACK HOLE CORE
 // Hope fully it works and doesnt cause lag (*praying)
 
 // Group so the core sphere + aura could be transformed together if ever needed
@@ -168,7 +196,7 @@ const auraMat = new THREE.ShaderMaterial({
             gl_FragColor = vec4(vec3(1.0, 0.45, 0.1) * rim * uIntensity * 5.0, 1.0);
         }
     `,
-    side: THREE.BackSide,        // render inside faces, so the glow wraps around 
+    side: THREE.BackSide,        // render inside faces, so the glow wraps around
                                  // the sphere as seen from outside
     transparent: true,
     blending: THREE.AdditiveBlending // light adds onto what's behind it instead of covering it
@@ -178,10 +206,12 @@ coreGroup.add(new THREE.Mesh(new THREE.SphereGeometry(4.25, 64, 64), auraMat));
 
 // ACCRETION DISK - built from thousands of instanced tapered "streak" cones
 
-const instanceCount = 15000; // number of individual streak particles in the disk
+// Mobile GPUs can choke on 15k instanced cones + per-frame GLSL simplex noise.
+// Dropping to 8k on phones keeps FPS smooth while the disk still looks dense.
+const instanceCount = isMobile ? 8000 : 15000; // number of individual streak particles in the disk
 
 // Single streak shape, reused for every instance via InstancedMesh:
-// top radius 0.06 (thick/head end), bottom radius 0.008 (thin/tail point), 
+// top radius 0.06 (thick/head end), bottom radius 0.008 (thin/tail point),
 // length 1.8, 3 radial segments (triangular cross-section, cheap to render)
 const streakGeo = new THREE.CylinderGeometry(0.06, 0.008, 1.8, 3);
 // Rotate the cylinder so its long axis runs along local Z instead of default Y.
@@ -299,13 +329,13 @@ const diskMaterial = new THREE.ShaderMaterial({
         }
     `,
     transparent: true,
-    blending: THREE.AdditiveBlending, // streaks add light together where they 
+    blending: THREE.AdditiveBlending, // streaks add light together where they
                                       // overlap (glowy look)
     depthWrite: false                 // don't let transparent streaks occlude each
                                       // other via depth buffer
 });
 
-// One mesh instance per streak, all sharing the same geometry/material 
+// One mesh instance per streak, all sharing the same geometry/material
 // (GPU-instanced for performance)
 const instancedDisk = new THREE.InstancedMesh(streakGeo, diskMaterial, instanceCount);
 // Reusable dummy object used only to compute each instance's transform matrix
@@ -321,7 +351,7 @@ for (let i = 0; i < instanceCount; i++) {
 
     dummy.position.set(
         Math.cos(angle) * r,
-        (Math.random() - 0.5) * (8 / r), // thinner vertical spread at 
+        (Math.random() - 0.5) * (8 / r), // thinner vertical spread at
                                          // larger radius (flatter disk edge)
         Math.sin(angle) * r
     );
@@ -350,14 +380,14 @@ for (let i = 0; i < instanceCount; i++) {
     dummy.rotation.set(0, 0, 0); // no per-instance rotation — orientation is
                                  // handled entirely in the shader via tangent/normal
     dummy.updateMatrix();
-    instancedDisk.setMatrixAt(i, dummy.matrix); // bake this instance's transform 
+    instancedDisk.setMatrixAt(i, dummy.matrix); // bake this instance's transform
                                                 // into the instance buffer
 }
 instancedDisk.instanceMatrix.needsUpdate = true; // tell three.js to upload the
                                                  //  instance matrices to the GPU
 scene.add(instancedDisk);
 
-//Todo: add some config vars into 
+//Todo: add some config vars into
 // <SCROLL-DRIVEN EXPERIENCE ENGINE & CONFIGURATION>
 
 // Defines the [start, end] scroll-progress range (0–1) for each story chapter
@@ -386,6 +416,12 @@ const debugOverlayEl = document.getElementById('debug-overlay');
 const mainTitleEl = document.getElementById('main-title');
 const statusTextEl = document.getElementById('status-text');
 const velValEl = document.getElementById('vel-val');
+
+// On touch devices the scroll prompt should tell the user about the gestures
+// that actually exist there: one finger scrolls, two fingers orbit the disk.
+if (isMobile) {
+    scrollPromptEl.textContent = 'Scroll to explore';
+}
 
 // Convert raw page scroll position into a 0–1 progress value
 window.addEventListener('scroll', () => {
@@ -477,7 +513,7 @@ function animate() {
             controls.enabled = true;
         } else {
             // Coming back from a deeper chapter — fly back to the exact
-            // start position first. 
+            // start position first.
             // No user rotation until we arrive.
             controls.enabled = false;
             cameraTargetPos.copy(INITIAL_CAM_POS);
@@ -497,7 +533,7 @@ function animate() {
     } else if (p <= CHAPTERS.instability[1]) {
         currentChapter = "Instability";
         controls.enabled = false; // lock user rotation
-        arrivedAtStart = false;   // left the start; next return to 
+        arrivedAtStart = false;   // left the start; next return to
                                   // Observation must fly back first
 
         // 0>1 progress specifically for the camera move
@@ -505,7 +541,7 @@ function animate() {
         const camLerp = remap(p, CHAPTERS.observation[1], 0.6, 0, 1);
         cameraTargetPos.lerpVectors(baseUserCamPos, overheadCamPos, camLerp);
 
-        // 0>1 progress across the full Instability chapter, 
+        // 0>1 progress across the full Instability chapter,
         // drives all the shader uniforms below
         const instLerp = remap(p, CHAPTERS.observation[1], CHAPTERS.instability[1], 0, 1);
         diskMaterial.uniforms.uMorph.value = remap(instLerp, 0, 1, 0.1, 3.5);        // turbulence ramps up
@@ -557,10 +593,10 @@ function animate() {
             // that depends on "where the camera is" so orbiting resumes cleanly
             camera.position.copy(INITIAL_CAM_POS);
             baseUserCamPos.copy(INITIAL_CAM_POS);
-            controls.target.set(0, 0, 0); // make sure OrbitControls orbits around 
+            controls.target.set(0, 0, 0); // make sure OrbitControls orbits around
                                           // the black hole, not a stale target
             controls.update();
-            arrivedAtStart = true; // orbit control re-enabled on the next frame's 
+            arrivedAtStart = true; // orbit control re-enabled on the next frame's
                                    // Observation branch
         }
     }
