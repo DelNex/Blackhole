@@ -14,6 +14,8 @@ A scroll-controlled 3D visualization of a black hole with an accretion disk, bui
 - **Automatic return-to-start camera lock** — scrolling back to the top flies the camera precisely back to its original launch position before re-enabling user orbit, so the experience always resets to an identical starting state.
 - **Whiteout transition** at the very end of the scroll for the collapse finale.
 - **Optional debug overlay** showing scroll progress, current chapter, FPS, and live camera coordinates.
+- **Mobile-friendly touch interaction** — single-finger drag scrolls the page while two-finger drag rotates the scene, with touch handling tuned to avoid browser gesture conflicts.
+- **CSP hardening for module loading** — the page includes a Content Security Policy that explicitly allows the inline importmap and module script loading needed for Three.js and OrbitControls.
 
 ---
 
@@ -62,7 +64,8 @@ Each of the 15,000 disk particles is a tapered cone (`CylinderGeometry`, top rad
 
 ```
 ├── app.js           # Scene setup, shaders, disk instancing, scroll engine, animation loop
-└── index.html        # (expected) hosts #whiteout, #scroll-prompt, #debug-overlay
+├── index.html       # Page shell, importmap, CSP meta tag, and overlay elements
+└── style.css        # Full-screen canvas, overlay styling, and touch-safe page layout
 ```
 
 > Note: this script expects certain DOM elements to exist on the page (see below). It will run without them.
@@ -84,7 +87,8 @@ Each of the 15,000 disk particles is a tapered cone (`CylinderGeometry`, top rad
    npm install three
    ```
 2. Make sure your page has a scrollable height taller than the viewport (the scroll listener maps `window.scrollY` against `document.documentElement.scrollHeight - window.innerHeight`).
-3. Import and it will auto-start (`animate()` is called at the bottom of the file).
+3. Serve the files from a local web server (or any static host) so the module script and inline importmap can load correctly under the CSP policy.
+4. Import and it will auto-start (`animate()` is called at the bottom of the file).
 
 ---
 
