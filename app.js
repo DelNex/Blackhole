@@ -103,6 +103,15 @@ function syncTouchAction(e, activeTouches) {
     renderer.domElement.style.touchAction = count >= 2 ? 'none' : 'pan-y';
 }
 
+// Shared wrapper for the count-changing touch events (touchstart/touchend/
+// touchcancel): computes the guarded active-touch count once and always hands
+// syncTouchAction the same (e, activeTouches) shape, so the touch-action
+// switch behaves identically whether a finger lands, lifts, or the browser
+// aborts the sequence.
+function onCanvasTouchState(e) {
+    syncTouchAction(e, e.touches ? e.touches.length : 0);
+}
+
 // touchmove must be non-passive so we can preventDefault on multi-touch. iOS
 // Safari ignores `touch-action: none` for certain gesture sequences, so this
 // preventDefault is the belt-and-suspenders that actually stops the browser
@@ -130,22 +139,40 @@ function bindTouchActionListeners() {
     touchActionCanvas = canvas;
     // Re-sync as fingers land/leave. These are safe to keep passive — we only
     // mutate a style here, never preventDefault.
-    canvas.addEventListener('touchstart', syncTouchAction, { passive: true });
-    canvas.addEventListener('touchend', syncTouchAction, { passive: true });
-    canvas.addEventListener('touchcancel', syncTouchAction, { passive: true });
+    canvas.addEventListener('touchstart', onCanvasTouchState, { passive: true });
+    canvas.addEventListener('touchend', onCanvasTouchState, { passive: true });
+    canvas.addEventListener('touchcancel', onCanvasTouchState, { passive: true });
     canvas.addEventListener('touchmove', onCanvasTouchMove, { passive: false });
     touchActionBound = true;
 }
 
-function disposeTouchActionListeners() {
+// Exported teardown API: host apps / componentized setups can call this on
+// unmount. Also wired into pagehide below so unload/bfcache transitions never
+// leave listeners attached.
+export function disposeTouchActionListeners() {
     if (!touchActionBound) return;
-    touchActionCanvas.removeEventListener('touchstart', syncTouchAction);
-    touchActionCanvas.removeEventListener('touchend', syncTouchAction);
-    touchActionCanvas.removeEventListener('touchcancel', syncTouchAction);
+    // Hardened: if the tracked canvas was cleared/replaced before teardown
+    // (unexpected remount ordering), there is nothing to unbind — just reset
+    // the state so a later bind starts clean instead of dereferencing null.
+    if (!touchActionCanvas) {
+        touchActionBound = false;
+        return;
+    }
+    touchActionCanvas.removeEventListener('touchstart', onCanvasTouchState);
+    touchActionCanvas.removeEventListener('touchend', onCanvasTouchState);
+    touchActionCanvas.removeEventListener('touchcancel', onCanvasTouchState);
     touchActionCanvas.removeEventListener('touchmove', onCanvasTouchMove);
     touchActionCanvas = null;
     touchActionBound = false;
 }
+
+// Teardown wiring: dispose on pagehide (fires on real unload AND when the
+// page goes into bfcache). bfcache restores need a rebind — pageshow with
+// event.persisted === true is exactly the "restored from cache" signal.
+window.addEventListener('pagehide', disposeTouchActionListeners);
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) bindTouchActionListeners();
+});
 
 bindTouchActionListeners();
 
