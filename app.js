@@ -7,7 +7,7 @@
 // (Changes) Removed the feathering and Waving feature I added causing tons of bugs 
 // (Future Implementation) Add back the feathering so it looks like it gets swallowed 
 //  Will cause pain but what can we do. so goal rn get good at three.js to find the issue 
-//  intial speculation of the bug is the pie math wasnt working and needed to change formula
+//  intial speculation of the bug is the angular (atan/orbit) math wasnt working and needed to change formula
 //  and hardening by adding a caching which remember the initial positioning of the
 //  particles and then use the helper to make them align back if cause it some issues
 

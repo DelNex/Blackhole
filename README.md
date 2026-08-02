@@ -66,7 +66,7 @@ Each of the 15,000 disk particles is a tapered cone (`CylinderGeometry`, top rad
                        # #main-title, #status-text, #vel-val elements referenced by main.js
 ```
 
-> Note: this script expects certain DOM elements to exist on the page (see below). It will run without them, but those UI features will silently no-op.
+> Note: this script expects certain DOM elements to exist on the page (see below). It will run without them.
 
 ### Required DOM Elements (optional but expected)
 
