@@ -70,50 +70,93 @@ controls.mouseButtons = {
     RIGHT: THREE.MOUSE.NONE
 };
 
-// Mobile: single-finger swipe is ignored (passes through to native page
-// scroll so the chapter story still scrolls on a phone); two-finger drag
-// handles the 3D rotation instead.
+// Mobile: one-finger gestures are handled as page scroll, while two-finger
+// gestures are routed into OrbitControls for model rotation. OrbitControls does
+// not expose a pure two-finger rotate mode, so we use DOLLY_ROTATE and disable
+// zoom elsewhere to make two-finger motion act like rotate-only.
 controls.touches = {
-    ONE: THREE.TOUCH.NONE,
-    TWO: THREE.TOUCH.ROTATE
+    ONE: null,
+    TWO: THREE.TOUCH.DOLLY_ROTATE
 };
 
-// OrbitControls forces touch-action:none onto the canvas as an inline style
-// (which beats the CSS rule in style.css), and that would block all
-// one-finger scrolling on mobile. Reinstate vertical panning so a single
-// finger can still scroll the story while two-finger drags orbit the disk.
-renderer.domElement.style.touchAction = 'pan-y';
-
-// DYNAMIC TOUCH-ACTION - two-finger rotate vs one-finger scroll
-// The browser decides from the *static* touch-action value whether IT wins
-// reason: IDK anymore im tired I want to sleep and finish this hell hole.
-// over our pointer events when a gesture starts. `pan-y` keeps one-finger
-// scrolling alive, but with it set, the browser also claims multi-touch
-// sequences (page scroll/zoom) and fires pointercancel, chopping off the
-// two-finger rotation mid-gesture. Fix: the moment a second finger lands,
-// flip the canvas to `none` so ALL gesture authority goes to OrbitControls;
-// the moment it drops back to one finger, restore `pan-y` so single-finger
-// page scrolling resumes.
+// Force pointer events to be delivered on mobile so OrbitControls can
+// receive two-finger gestures. The canvas covers the page, so one-finger
+// vertical scroll is handled manually instead of relying on browser touch-action.
 const canvasEl = renderer.domElement;
+canvasEl.style.touchAction = 'none';
+const touchListenerOptions = { passive: false, capture: false };
+const activeTouchIds = new Set();
+let lastSingleTouchY = null;
 
-function syncTouchAction(e) {
-    canvasEl.style.touchAction = e.touches.length >= 2 ? 'none' : 'pan-y';
+function onCanvasTouchStart(e) {
+    // Track every touch pointer that starts on the canvas, because touchend/
+    // touchcancel events can be delivered with fewer touches than were actually
+    // active before the event.
+    for (let i = 0; i < e.changedTouches.length; i++) {
+        activeTouchIds.add(e.changedTouches[i].identifier);
+    }
+
+    if (activeTouchIds.size === 1 && e.touches.length === 1) {
+        lastSingleTouchY = e.touches[0].clientY;
+    } else {
+        lastSingleTouchY = null;
+    }
 }
 
-// Re-sync as fingers land/leave. These are safe to keep passive — we only
-// mutate a style here, never preventDefault.
-canvasEl.addEventListener('touchstart', syncTouchAction, { passive: true });
-canvasEl.addEventListener('touchend', syncTouchAction, { passive: true });
-canvasEl.addEventListener('touchcancel', syncTouchAction, { passive: true });
-// touchmove must be non-passive so we can preventDefault on multi-touch. iOS
-// Safari ignores `touch-action: none` for certain gesture sequences, so this
-// preventDefault is the belt-and-suspenders that actually stops the browser
-// from stealing the two-finger rotation. Single-finger moves are left alone
-// so vertical page scrolling keeps working.
-canvasEl.addEventListener('touchmove', (e) => {
-    if (e.touches.length >= 2) e.preventDefault();
-    syncTouchAction(e);
-}, { passive: false });
+function onCanvasTouchMove(e) {
+    // One-finger vertical drags should scroll the page, while two-finger
+    // gestures should be captured and forwarded to OrbitControls.
+    if (activeTouchIds.size === 1 && e.touches.length === 1 && lastSingleTouchY !== null) {
+        const currentY = e.touches[0].clientY;
+        window.scrollBy(0, lastSingleTouchY - currentY);
+        lastSingleTouchY = currentY;
+        e.preventDefault();
+    } else if (activeTouchIds.size >= 2) {
+        lastSingleTouchY = null;
+        e.preventDefault();
+    }
+}
+
+function onCanvasTouchEnd(e) {
+    // Remove ended touch pointers from our active set, then recompute whether
+    // the remaining gesture is a single-finger scroll or part of a multi-touch
+    // OrbitControls interaction.
+    for (let i = 0; i < e.changedTouches.length; i++) {
+        activeTouchIds.delete(e.changedTouches[i].identifier);
+    }
+
+    if (activeTouchIds.size === 1 && e.touches.length === 1) {
+        lastSingleTouchY = e.touches[0].clientY;
+    } else {
+        lastSingleTouchY = null;
+    }
+}
+
+function onCanvasTouchCancel(e) {
+    // Treat cancelled touches as ended gestures and clear any pending
+    // single-finger scroll state.
+    for (let i = 0; i < e.changedTouches.length; i++) {
+        activeTouchIds.delete(e.changedTouches[i].identifier);
+    }
+    lastSingleTouchY = null;
+}
+
+canvasEl.addEventListener('touchstart', onCanvasTouchStart, touchListenerOptions);
+canvasEl.addEventListener('touchmove', onCanvasTouchMove, touchListenerOptions);
+canvasEl.addEventListener('touchend', onCanvasTouchEnd, touchListenerOptions);
+canvasEl.addEventListener('touchcancel', onCanvasTouchCancel, touchListenerOptions);
+
+function removeCanvasTouchListeners() {
+    // Remove handlers with the same listener options used during registration
+    // so we don't leak event listeners if the canvas is replaced or the page
+    // transitions away.
+    canvasEl.removeEventListener('touchstart', onCanvasTouchStart, touchListenerOptions);
+    canvasEl.removeEventListener('touchmove', onCanvasTouchMove, touchListenerOptions);
+    canvasEl.removeEventListener('touchend', onCanvasTouchEnd, touchListenerOptions);
+    canvasEl.removeEventListener('touchcancel', onCanvasTouchCancel, touchListenerOptions);
+}
+
+window.addEventListener('pagehide', removeCanvasTouchListeners, { passive: true });
 
 // Tracks the camera position the user last left it at via manual orbiting.
 // Kept separate from the scroll-driven lerp target so scroll animation
@@ -677,6 +720,7 @@ Camera Position:
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 

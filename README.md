@@ -61,9 +61,8 @@ Each of the 15,000 disk particles is a tapered cone (`CylinderGeometry`, top rad
 ## Project Structure
 
 ```
-├── main.js          # Scene setup, shaders, disk instancing, scroll engine, animation loop
-└── index.html        # (expected) hosts #whiteout, #scroll-prompt, #debug-overlay,
-                       # #main-title, #status-text, #vel-val elements referenced by main.js
+├── app.js           # Scene setup, shaders, disk instancing, scroll engine, animation loop
+└── index.html        # (expected) hosts #whiteout, #scroll-prompt, #debug-overlay
 ```
 
 > Note: this script expects certain DOM elements to exist on the page (see below). It will run without them.
