@@ -93,14 +93,14 @@ renderer.domElement.style.touchAction = 'pan-y';
 // flip the canvas to `none` so ALL gesture authority goes to OrbitControls;
 // the moment it drops back to one finger, restore `pan-y` so single-finger
 // page scrolling resumes.
-const canvasEl = renderer.domElement;
 
-function syncTouchAction(e) {
+function syncTouchAction(e, activeTouches) {
     // Defensive: touchend/touchcancel can fire with an empty (or, in some
     // browser edge cases, missing) touches list — treat that as "no fingers",
     // which always means restore scrolling.
-    const activeTouches = e.touches ? e.touches.length : 0;
-    canvasEl.style.touchAction = activeTouches >= 2 ? 'none' : 'pan-y';
+    const count = activeTouches ?? (e.touches ? e.touches.length : 0);
+    // Always target the CURRENT canvas, never a stale captured reference.
+    renderer.domElement.style.touchAction = count >= 2 ? 'none' : 'pan-y';
 }
 
 // touchmove must be non-passive so we can preventDefault on multi-touch. iOS
@@ -109,33 +109,41 @@ function syncTouchAction(e) {
 // from stealing the two-finger rotation. Single-finger moves are left alone
 // so vertical page scrolling keeps working.
 function onCanvasTouchMove(e) {
-    if (e.touches.length >= 2) e.preventDefault();
-    syncTouchAction(e);
+    const activeTouches = e.touches ? e.touches.length : 0;
+    if (activeTouches >= 2) e.preventDefault();
+    syncTouchAction(e, activeTouches);
 }
 
 // Bind/teardown helpers with a double-init guard. Named handler references
 // (not anonymous closures) mean removeEventListener can actually unbind them,
-// and the flag makes re-binding a no-op — so SPA re-mounts or a re-executed
-// module can never stack duplicate listeners on the canvas.
+// and the binding tracks WHICH canvas owns the listeners: if a remount ever
+// replaces renderer.domElement, the old canvas's listeners are torn down
+// before the new canvas is bound, so stale elements never keep handlers and
+// the guard never blocks a fresh bind.
 let touchActionBound = false;
+let touchActionCanvas = null;
 
 function bindTouchActionListeners() {
-    if (touchActionBound) return;
+    const canvas = renderer.domElement;
+    if (touchActionBound && touchActionCanvas === canvas) return; // already bound
+    if (touchActionBound) disposeTouchActionListeners(); // canvas replaced -> unbind the old one first
+    touchActionCanvas = canvas;
     // Re-sync as fingers land/leave. These are safe to keep passive — we only
     // mutate a style here, never preventDefault.
-    canvasEl.addEventListener('touchstart', syncTouchAction, { passive: true });
-    canvasEl.addEventListener('touchend', syncTouchAction, { passive: true });
-    canvasEl.addEventListener('touchcancel', syncTouchAction, { passive: true });
-    canvasEl.addEventListener('touchmove', onCanvasTouchMove, { passive: false });
+    canvas.addEventListener('touchstart', syncTouchAction, { passive: true });
+    canvas.addEventListener('touchend', syncTouchAction, { passive: true });
+    canvas.addEventListener('touchcancel', syncTouchAction, { passive: true });
+    canvas.addEventListener('touchmove', onCanvasTouchMove, { passive: false });
     touchActionBound = true;
 }
 
 function disposeTouchActionListeners() {
     if (!touchActionBound) return;
-    canvasEl.removeEventListener('touchstart', syncTouchAction);
-    canvasEl.removeEventListener('touchend', syncTouchAction);
-    canvasEl.removeEventListener('touchcancel', syncTouchAction);
-    canvasEl.removeEventListener('touchmove', onCanvasTouchMove);
+    touchActionCanvas.removeEventListener('touchstart', syncTouchAction);
+    touchActionCanvas.removeEventListener('touchend', syncTouchAction);
+    touchActionCanvas.removeEventListener('touchcancel', syncTouchAction);
+    touchActionCanvas.removeEventListener('touchmove', onCanvasTouchMove);
+    touchActionCanvas = null;
     touchActionBound = false;
 }
 

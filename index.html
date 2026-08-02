@@ -2,6 +2,13 @@
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
+	<!-- viewport-fit=cover only, deliberately NO user-scalable=no / maximum-scale=1.0.
+	     Pinch-zoom stays available for accessibility. The canvas rests at
+	     touch-action: pan-y (which excludes pinch-zoom by spec) and app.js flips it
+	     to `none` during two-finger gestures + preventDefaults multi-touch moves, so
+	     the browser never steals the 3D rotation; zoom can only ever kick in where
+	     the gesture model permits it. All UI overlays are pointer-events: none, so
+	     no clickable element can be misaligned by a scale change. -->
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 	<link rel="stylesheet" href="/style.css">
 	<link rel="icon" type="img/png" href="black-hole.png">
